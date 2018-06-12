@@ -2270,7 +2270,8 @@ class BenchmarkCNN(object):
         else:
           horovod_device = ''
         # All-reduce gradients using Horovod.
-        grads = [hvd.allreduce(grad, device_dense=horovod_device)
+        # fp16 all-reduce (please use "fp16" or "fp16_divide_before_sum" branch of horovod)
+        grads = [tf.cast(hvd.allreduce(tf.cast(grad, tf.float16), device_dense=horovod_device), tf.float32)
                  for grad in grads]
 
       if self.params.staged_vars:
