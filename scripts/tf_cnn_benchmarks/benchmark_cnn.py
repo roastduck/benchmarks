@@ -2270,8 +2270,24 @@ class BenchmarkCNN(object):
         else:
           horovod_device = ''
         # All-reduce gradients using Horovod.
+
+        mul_28 = grads[26]
+        truediv_26 = list(mul_28.op.inputs)[1]
+        mul = list(list(mul_28.op.inputs)[0].op.inputs)[0]
+        Reshape = list(list(list(list(mul_28.op.inputs)[0].op.inputs)[1].op.inputs)[0].op.inputs)[0]
+        ReluGrad = list(list(list(list(mul_28.op.inputs)[0].op.inputs)[1].op.inputs)[0].op.inputs)[1]
+        assert mul_28.name == 'v0/tower_0/mul_28:0', 'actual: %s'%mul_28.name
+        assert truediv_26.name == 'v0/tower_0/truediv_26:0', 'actual: %s'%truediv_26.name
+        assert mul.name == 'v0/tower_0/gradients/v0/tower_0/L2Loss_26_grad/mul:0', 'actual: %s'%mul.name
+        assert Reshape.name == 'v0/tower_0/cg/Reshape:0', 'actual: %s'%Reshape.name
+        assert ReluGrad.name == 'v0/tower_0/gradients/v0/tower_0/cg/affine0/affine0_grad/ReluGrad:0', 'actual: %s'%ReluGrad.name
+        Reshape = hvd.allgather(tf.cast(Reshape, tf.float32))
+        ReluGrad = hvd.allgather(tf.cast(ReluGrad, tf.float32))
+        mul_28 = (mul + tf.matmul(Reshape, ReluGrad, transpose_a=True)) * truediv_26
+
         grads = [hvd.allreduce(grad, device_dense=horovod_device)
                  for grad in grads]
+        grads[26] = mul_28
 
       if self.params.staged_vars:
         grad_dtypes = [grad.dtype for grad in grads]
