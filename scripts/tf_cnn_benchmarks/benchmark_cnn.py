@@ -2270,6 +2270,7 @@ class BenchmarkCNN(object):
         else:
           horovod_device = ''
         # All-reduce gradients using Horovod.
+        # fp16 all-reduce (please use "fp16" or "fp16_divide_before_sum" branch of horovod)
 
         mul_28 = grads[26]
         truediv_26 = list(mul_28.op.inputs)[1]
@@ -2281,13 +2282,14 @@ class BenchmarkCNN(object):
         assert mul.name == 'v0/tower_0/gradients/v0/tower_0/L2Loss_26_grad/mul:0', 'actual: %s'%mul.name
         assert Reshape.name == 'v0/tower_0/cg/Reshape:0', 'actual: %s'%Reshape.name
         assert ReluGrad.name == 'v0/tower_0/gradients/v0/tower_0/cg/affine0/affine0_grad/ReluGrad:0', 'actual: %s'%ReluGrad.name
-        Reshape = hvd.allgather(tf.cast(Reshape, tf.float32))
-        ReluGrad = hvd.allgather(tf.cast(ReluGrad, tf.float32))
-        mul_28 = (mul + tf.matmul(Reshape, ReluGrad, transpose_a=True)) * truediv_26
+        Reshape = hvd.allgather(Reshape)
+        ReluGrad = hvd.allgather(ReluGrad)
+        mul_28 = (tf.cast(mul, tf.float16) + tf.matmul(Reshape, ReluGrad, transpose_a=True)) * tf.cast(truediv_26, tf.float16)
 
-        grads = [hvd.allreduce(grad, device_dense=horovod_device)
+        grads = [tf.cast(hvd.allreduce(tf.cast(grad, tf.float16), device_dense=horovod_device), tf.float32)
                  for grad in grads]
-        grads[26] = mul_28
+
+        grads[26] = tf.cast(mul_28, tf.float32)
 
       if self.params.staged_vars:
         grad_dtypes = [grad.dtype for grad in grads]
