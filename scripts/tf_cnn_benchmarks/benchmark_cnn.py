@@ -2286,10 +2286,12 @@ class BenchmarkCNN(object):
         ReluGrad = hvd.allgather(ReluGrad)
         mul_28 = (tf.cast(mul, tf.float16) + tf.matmul(Reshape, ReluGrad, transpose_a=True)) * tf.cast(truediv_26, tf.float16)
 
-        grads = [tf.cast(hvd.allreduce(tf.cast(grad, tf.float16), device_dense=horovod_device), tf.float32)
-                 for grad in grads]
-
-        grads[26] = tf.cast(mul_28, tf.float32)
+        for i in range(len(grads)):
+          # Tensorflow won't delete unused op
+          if i == 26:
+            grads[i] = tf.cast(mul_28, tf.float32)
+          else:
+            grads[i] = tf.cast(hvd.allreduce(tf.cast(grads[i], tf.float16), device_dense=horovod_device), tf.float32)
 
       if self.params.staged_vars:
         grad_dtypes = [grad.dtype for grad in grads]
